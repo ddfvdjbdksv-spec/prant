@@ -6150,24 +6150,12 @@ function openSmartCard(studentId) {
                     onclick="recordQuickAction(${s.id}, 'attendance'); openSmartCard(${s.id});">
                     <i class="fas fa-user-check"></i> تسجيل حضور
                 </button>
-                <!-- أزرار دفع الاشتراك الثلاثة المستقلة -->
+                <!-- أزرار دفع الاشتراك -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <button class="btn btn-payment" style="height: 65px; border-radius: 12px; font-size: 0.88rem; line-height:1.3; background: #16a34a; box-shadow: 0 4px 14px -2px rgba(22,163,74,0.35);"
+                    <button class="btn btn-payment" style="height: 65px; border-radius: 12px; font-size: 0.88rem; line-height:1.3; background: #f97316; box-shadow: 0 4px 14px -2px rgba(249,115,22,0.4);"
                         onclick="payLessonDirect(${s.id})">
                         <i class="fas fa-chalkboard-teacher" style="display:block;font-size:1.2rem;margin-bottom:3px;"></i>
                         دفع اشتراك الدرس
-                    </button>
-                    <button class="btn btn-payment" style="height: 65px; border-radius: 12px; font-size: 0.88rem; line-height:1.3; background: #2563eb; box-shadow: 0 4px 14px -2px rgba(37,99,235,0.35);"
-                        onclick="payPlatformDirect(${s.id})">
-                        <i class="fas fa-laptop-code" style="display:block;font-size:1.2rem;margin-bottom:3px;"></i>
-                        دفع اشتراك المنصة
-                    </button>
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px;">
-                    <button class="btn btn-payment" style="height: 65px; border-radius: 12px; font-size: 0.88rem; line-height:1.3; background: linear-gradient(135deg,#7c3aed,#db2777); box-shadow: 0 4px 14px -2px rgba(124,58,237,0.35);"
-                        onclick="payBothDirect(${s.id})">
-                        <i class="fas fa-layer-group" style="display:block;font-size:1.2rem;margin-bottom:3px;"></i>
-                        دفع الاشتراكين معاً
                     </button>
                     <button class="btn btn-payment" style="height: 65px; border-radius: 12px; font-size: 0.88rem; line-height:1.3; background: var(--vibrant-orange);"
                         onclick="recordQuickAction(${s.id}, 'handout'); openSmartCard(${s.id});">

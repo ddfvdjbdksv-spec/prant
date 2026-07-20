@@ -580,6 +580,11 @@ const CloudSync = (() => {
             }
 
             ready = true;
+            // ✅ كشف fsDB على window.db حتى تستطيع platform-subscriptions.js
+            // استخدام window.db.collection(...) للوصول لمجموعات Firestore
+            window.db = window.db && typeof window.db.collection === 'function' ? window.db : fsDB;
+            // لو window.db هو كائن البيانات المحلية (db من app.js)، نحتفظ بـ fsDB على window._firestoreDB
+            window._firestoreDB = fsDB;
             console.log('[CloudSync] ✅ الاتصال جاهز، مشروع Firebase:', FIREBASE_CONFIG.projectId);
             setStatus(navigator.onLine ? 'syncing' : 'offline');
 
@@ -616,7 +621,8 @@ const CloudSync = (() => {
     return {
         init, onLocalSave, pushAllTables, isReady: () => ready, debugInfo,
         forceSync: pushAllTables,
-        manualPushToCloud, manualPullFromCloud
+        manualPushToCloud, manualPullFromCloud,
+        getFirestoreDB: () => fsDB
     };
 })();
 
