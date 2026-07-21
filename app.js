@@ -6474,9 +6474,9 @@ function showStudentQR(id) {
 
     const group = db.groups.find(g => g.id == s.groupId);
 
-    // بناء الـ URL الخاص بالطالب: نفس رابط الموقع + ?student=ID
-    const baseUrl = window.location.origin + window.location.pathname;
-    const studentUrl = `${baseUrl}?student=${id}`;
+    // بناء الـ URL الخاص بالطالب: student-report.html في نفس المجلد + ?student=ID
+    const baseDir = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+    const studentUrl = `${baseDir}student-report.html?student=${id}`;
 
     // تحديث بيانات الـ Modal
     document.getElementById('qr-modal-student-name').textContent = s.name;
@@ -6519,8 +6519,8 @@ function printStudentQRCard() {
     if (!s) return;
 
     const group = db.groups.find(g => g.id == s.groupId);
-    const baseUrl = window.location.origin + window.location.pathname;
-    const studentUrl = `${baseUrl}?student=${s.id}`;
+    const baseDir = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+    const studentUrl = `${baseDir}student-report.html?student=${s.id}`;
     const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(studentUrl)}&color=1e293b&bgcolor=ffffff&qzone=2`;
 
     const win = window.open('', '_blank');

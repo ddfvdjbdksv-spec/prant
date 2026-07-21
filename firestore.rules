@@ -2,23 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to ensure valid document requests
-    function isValidDoc() {
-      return request.resource != null || resource != null;
-    }
-
-    // Global settings & system metadata
-    match /meta/{docId} {
-      allow read: if true;
-      allow write: if isValidDoc();
-    }
-
-    // Main database collections (students, groups, attendance, payments, etc.)
-    match /{collectionId}/{docId} {
-      allow read: if true;
-      allow write: if isValidDoc();
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
-

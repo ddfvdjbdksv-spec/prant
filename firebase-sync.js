@@ -221,11 +221,15 @@ const CloudSync = (() => {
         });
 
         // الحذف: أي id كان موجود قبل كده وبقى مش موجود دلوقتي
-        Object.keys(tableHashes).forEach(id => {
-            if (!currentIds.has(id)) {
-                ops.push({ type: 'delete', id });
-            }
-        });
+        // ⚠️ حماية: لا نحذف من Firestore لو كانت هذه أول مزامنة (isFreshSync)
+        // أو لو عدد السجلات المحلية صفر (لم تكتمل البيانات من IndexedDB بعد)
+        if (!isFreshSync && arr.length > 0) {
+            Object.keys(tableHashes).forEach(id => {
+                if (!currentIds.has(id)) {
+                    ops.push({ type: 'delete', id });
+                }
+            });
+        }
 
         if (!ops.length) return 0;
         await flushOps(table, ops); // الـ hash بيتحدّث جوه flushOps بعد نجاح الكتابة فعليًا فقط
