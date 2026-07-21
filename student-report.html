@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -194,24 +194,57 @@ function periodKey(y,m){return y+'-'+String(m).padStart(2,'0');}
 function buildPeriods(){
     const s=studentData;if(!s)return;
     const seen=new Set();
-    const join=new Date(s.joinDate||s.id);
-    seen.add(periodKey(join.getFullYear(),join.getMonth()));
-    const now=new Date();seen.add(periodKey(now.getFullYear(),now.getMonth()));
-    [...allData.attendance,...allData.payments,...allData.exams].forEach(r=>{
-        if(!r)return;
-        const d=r.date?new Date(r.date):(r.id?new Date(r.id):null);
-        if(!d||isNaN(d))return;
-        seen.add(periodKey(d.getFullYear(),d.getMonth()));
-    });
     const mn=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+    // ─ فقط بيانات هذا الطالب تحديداً ─
+    const myAtt  = allData.attendance.filter(a=>String(a.studentId)===String(s.id));
+    const myPays = allData.payments.filter(p=>String(p.studentId)===String(s.id));
+    const myExams= allData.exams.filter(e=>String(e.grade)===String(s.grade));
+    const myScores= allData.scores.filter(sc=>String(sc.studentId)===String(s.id));
+    const myAbsence= (allData.absenceSessions||[]).filter(ss=>{
+        if(ss.grade&&String(ss.grade)!==String(s.grade))return false;
+        if(ss.groupId&&String(ss.groupId)!==String(s.groupId))return false;
+        return (Array.isArray(ss.presentIds)&&ss.presentIds.map(String).includes(String(s.id))) ||
+               (Array.isArray(ss.absentIds)&&ss.absentIds.map(String).includes(String(s.id)));
+    });
+
+    // الشهور المستخرجة من بيانات الطالب الفعلية
+    myAtt.forEach(r=>{const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));});
+    myAbsence.forEach(r=>{const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));});
+    myPays.forEach(r=>{
+        if(r.year&&r.month!=null){seen.add(periodKey(r.year,r.month-1));return;}
+        const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));
+    });
+    myScores.forEach(sc=>{
+        const ex=myExams.find(e=>e.id===sc.examId);
+        if(ex){const d=new Date(ex.id);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));}
+    });
+
+    // إذا لم توجد بيانات → أضف شهر التسجيل والشهر الحالي كـ fallback
+    if(seen.size===0){
+        const join=new Date(s.joinDate||s.id);
+        if(!isNaN(join))seen.add(periodKey(join.getFullYear(),join.getMonth()));
+        const now=new Date();seen.add(periodKey(now.getFullYear(),now.getMonth()));
+    }
+
+    const prevKey = periods[periodIdx]?.key; // نحفظ الشهر المختار حالياً
     periods=Array.from(seen).map(k=>{
         const[y,m]=k.split('-').map(Number);
         return{key:k,year:y,month:m,label:mn[m]+' '+y,start:new Date(y,m,1),end:new Date(y,m+1,1)};
-    }).sort((a,b)=>b.key.localeCompare(a.key));
-    if(periodIdx>=periods.length)periodIdx=0;
+    }).sort((a,b)=>b.key.localeCompare(a.key)); // الأحدث أولاً
+
+    // إذا كان هناك شهر مختار سابقاً → نحافظ عليه، وإلا → أول شهر (الأحدث بالبيانات)
+    if(prevKey){
+        const idx=periods.findIndex(p=>p.key===prevKey);
+        periodIdx=idx>=0?idx:0;
+    } else {
+        periodIdx=0; // الأحدث الذي فيه بيانات
+    }
+
     const sel=document.getElementById('period-select');
     if(sel)sel.innerHTML=periods.map((p,i)=>`<option value="${i}"${i===periodIdx?' selected':''}>${p.label}</option>`).join('');
 }
+
 function changePeriod(i){periodIdx=Number(i);renderReport();}
 function stepPeriod(d){const n=periodIdx+d;if(n<0||n>=periods.length)return;periodIdx=n;document.getElementById('period-select').value=n;renderReport();}
 function renderHeader(){
