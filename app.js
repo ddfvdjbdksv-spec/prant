@@ -6576,6 +6576,45 @@ function downloadStudentQR() {
     showNotification('📥 جاري تحميل QR Code...', 'info');
 }
 
+function sendStudentQRWhatsApp(type) {
+    const s = db.students.find(x => x.id === _currentQRStudentId);
+    if (!s) return showNotification('لم يتم العثور على بيانات الطالب', 'error');
+
+    const phone = type === 'parent' ? (s.parentPhone || s.phone) : s.phone;
+    const recipientLabel = type === 'parent' ? 'ولي الأمر' : 'الطالب';
+
+    if (!phone) {
+        return showNotification(`رقم ${recipientLabel} غير مسجل لهذا الطالب`, 'warning');
+    }
+
+    const baseDir = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '/');
+    const studentUrl = `${baseDir}student-report.html?student=${s.id}`;
+
+    const profile = typeof getProgramProfile === 'function' ? getProgramProfile() : {};
+    const teacherName = typeof getTeacherDisplayName === 'function' ? getTeacherDisplayName() : 'أستاذ المادة';
+    const spec = profile.specialization || 'أستاذ الرياضيات';
+
+    let msg = '';
+    if (typeof buildFormalParentMessage === 'function') {
+        msg = buildFormalParentMessage({
+            noticeType: `رابط التقرير المباشر للطالب/ـة ${s.name}`,
+            bodyLines: [
+`رابط التقرير الشخصي المباشر لمتابعة الحضور والغياب ودرجات الامتحانات والاشتراكات:
+
+📌 ${studentUrl}`
+            ]
+        });
+    } else {
+        msg = `السلام عليكم ورحمة الله وبركاته،\n\nرابط التقرير الشخصي المباشر للطالب/ـة: *${s.name}*\n${studentUrl}`;
+    }
+
+    const cleanPhone = String(phone).replace(/\D/g, '').replace(/^0/, '');
+    const fullPhone  = cleanPhone.startsWith('20') ? cleanPhone : `20${cleanPhone}`;
+    const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+}
+
+
 
 function showNotification(msg, type = 'success', duration = 4000) {
     const n = document.createElement('div');
