@@ -106,10 +106,17 @@
     <div class="main">
         <div class="card" style="padding:1rem 1.5rem;">
             <div class="period-bar">
-                <button class="nav-btn" onclick="stepPeriod(1)"><i class="fas fa-chevron-left"></i></button>
+                <button class="nav-btn" onclick="stepPeriod(1)" title="الشهر السابق">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
                 <select id="period-select" onchange="changePeriod(this.value)"></select>
-                <button class="nav-btn" onclick="stepPeriod(-1)"><i class="fas fa-chevron-right"></i></button>
+                <button class="nav-btn" onclick="stepPeriod(-1)" title="الشهر التالي">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
             </div>
+        </div>
+        <div id="period-status-banner" style="display:none; text-align:center; padding:0.75rem; border-radius:12px; font-weight:700; font-size:0.85rem; margin-bottom:1rem; background:#fefce8; border:1px solid #fef3c7; color:#b45309; direction:rtl;">
+            <i class="fas fa-clock"></i> هذا الشهر جاري رصده وتقييماته مستمرة حالياً ولم تنتهي بعد ⏳
         </div>
         <div class="card">
             <div class="card-title"><i class="fas fa-calendar-check"></i> الحضور والغياب</div>
@@ -216,6 +223,20 @@ function attachListeners(){
 
 function periodKey(y,m){return y+'-'+String(m).padStart(2,'0');}
 
+function getStudentSettings(s) {
+    if (!s) return {};
+    const st = allData.settings || {};
+    const groupKey = `${s.grade}_${s.groupId}`;
+    if (st[groupKey] && st[groupKey].activeCycle) {
+        return st[groupKey];
+    }
+    const gradeKey = s.grade || 'default';
+    if (st[gradeKey]) {
+        return st[gradeKey];
+    }
+    return {};
+}
+
 function buildPeriods(){
     const s=studentData;if(!s)return;
     const ARABIC_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
@@ -237,18 +258,14 @@ function buildPeriods(){
         });
     });
 
-    const st = allData.settings || {};
+    const st = getStudentSettings(s);
     if (st.activeCycle && st.cycleStartDate) {
-        const activeSameGroup = !st.activeCycleGroupId || String(st.activeCycleGroupId) === String(s.groupId);
-        const activeSameGrade = !st.activeCycleGrade   || String(st.activeCycleGrade)   === String(s.grade);
-        if (activeSameGroup && activeSameGrade) {
-            cycles.push({
-                key: `cycle-${st.activeCycle}`,
-                label: st.monthlyCycleName || null,
-                start: new Date(st.cycleStartDate),
-                end: new Date(8640000000000000)
-            });
-        }
+        cycles.push({
+            key: `cycle-${st.activeCycle}`,
+            label: st.monthlyCycleName || null,
+            start: new Date(st.cycleStartDate),
+            end: new Date(8640000000000000)
+        });
     }
     cycles.sort((a, b) => a.start - b.start);
     const findCycleFor = (d) => cycles.find(c => d >= c.start && d < c.end) || null;
@@ -335,6 +352,15 @@ function renderHeader(){
 function renderReport(){
     const s=studentData;if(!s||!periods.length)return;
     const per=periods[periodIdx];if(!per)return;
+    const st=getStudentSettings(s);
+    const banner=document.getElementById('period-status-banner');
+    if(banner){
+        if(st.activeCycle && per.key===`cycle-${st.activeCycle}`){
+            banner.style.display='block';
+        } else {
+            banner.style.display='none';
+        }
+    }
     const{start,end}=per;
     const atts=allData.attendance.filter(a=>String(a.studentId)===String(s.id)&&new Date(a.date)>=start&&new Date(a.date)<end);
     const sessIds=new Set(atts.filter(a=>a.sessionId).map(a=>String(a.sessionId)));
@@ -389,6 +415,7 @@ function renderReport(){
     }
     const pays=allData.payments.filter(p=>{
         if(String(p.studentId)!==String(s.id)||p.category!=='اشتراك شهري')return false;
+        if(p.cycleId && per.key===`cycle-${p.cycleId}`) return true;
         if(p.year&&p.month)return p.year===per.year&&(p.month-1)===per.month;
         const d=new Date(p.date);return d>=start&&d<end;
     });
