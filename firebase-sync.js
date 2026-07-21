@@ -169,7 +169,7 @@ const CloudSync = (() => {
         if (table) pendingTableRefreshes.add(table);
         clearTimeout(rerenderTimer);
         rerenderTimer = setTimeout(() => {
-            const globals = ['syncUIWithContext', 'renderMonthlySubscriptionTables', 'renderSubscriptionTracker'];
+            const globals = ['syncUIWithContext', 'renderMonthlySubscriptionTables', 'renderSubscriptionTracker', 'updateDashboardStats'];
             globals.forEach(fn => { try { if (typeof window[fn] === 'function') window[fn](); } catch (e) { } });
 
             pendingTableRefreshes.forEach(t => {
@@ -178,8 +178,22 @@ const CloudSync = (() => {
                     fns.forEach(fn => { try { fn(); } catch (e) { } });
                 }
             });
+
+            try {
+                const activeNav = document.querySelector('.nav-item.active');
+                const sectionId = activeNav ? activeNav.dataset.section : null;
+                if (sectionId) {
+                    if (sectionId === 'students' && typeof window.renderStudents === 'function') window.renderStudents();
+                    if (sectionId === 'groups' && typeof window.renderGroups === 'function') window.renderGroups();
+                    if (sectionId === 'payments' && typeof window.renderFinances === 'function') window.renderFinances();
+                    if (sectionId === 'attendance' && typeof window.renderPortalAttendance === 'function') window.renderPortalAttendance();
+                    if (sectionId === 'exams' && typeof window.renderExams === 'function') window.renderExams();
+                    if (sectionId === 'settings' && typeof window.renderProgramSettings === 'function') window.renderProgramSettings();
+                }
+            } catch (e) { }
+
             pendingTableRefreshes.clear();
-        }, 700);
+        }, 300);
     }
 
     // ============================================================
@@ -255,8 +269,6 @@ const CloudSync = (() => {
             });
             try {
                 await batch.commit();
-                // ✅ نحدّث الـ hash المحلي بعد تأكيد Firestore فعليًا للنجاح فقط —
-                // ده اللي كان ناقص قبل كده وسبب إن المزامنة تتوقف بصمت
                 chunk.forEach(op => {
                     if (op.type === 'delete') delete tableHashes[op.id];
                     else tableHashes[op.id] = op.newHash;
@@ -266,7 +278,6 @@ const CloudSync = (() => {
             } catch (err) {
                 console.error(`[CloudSync] ❌ فشلت مزامنة ${table} (${chunk.length} سجل):`, err);
                 setStatus('error');
-                // لا نحدّث الـ hash — هيتحاول تاني تلقائيًا في أقرب db.save() أو زر يدوي
             }
         }
         setStatus(navigator.onLine ? 'online' : 'offline');
@@ -280,7 +291,7 @@ const CloudSync = (() => {
     // ── رفع يدوي بزر — يرجع تقرير واضح بعدد السجلات المرفوعة فعليًا ──
     async function manualPushToCloud() {
         if (!ready) {
-            alert('⚠️ الاتصال بـ Firebase غير جاهز حاليًا.\nافتح Console (F12) وشوف رسائل [CloudSync] لمعرفة السبب.');
+            alert('⚠️ الاتصال بـ Firebase غير جاهز حالياً.\nافتح Console (F12) وشوف رسائل [CloudSync] لمعرفة السبب.');
             return;
         }
         const btn = document.getElementById('manual-push-btn');
@@ -315,7 +326,6 @@ const CloudSync = (() => {
         const remoteIds = new Set(remoteArr.map(r => String(r.id)));
         let changed = false;
 
-        // 1. معالجة المستندات القادمة من السحابة
         for (const remoteRec of remoteArr) {
             const id = String(remoteRec.id);
             const idx = localArr.findIndex(r => String(r.id) === id);
@@ -324,13 +334,6 @@ const CloudSync = (() => {
                 const localRec = localArr[idx];
                 const localHash = hashOf(localRec);
 
-                // إذا كان هناك تعديل محلي لم يُرفع بعد (والجهاز ليس في حالة أول مزامنة)، لا نستبدله
-                if (!isFreshSync && tableHashes[id] !== localHash) {
-                    console.log(`[CloudSync] merge: kept local modified record ${id} in ${table}`);
-                    continue;
-                }
-
-                // تحديث السجل المحلي إذا كان مختلفاً عن السحابة
                 if (localHash !== hashOf(remoteRec)) {
                     localArr[idx] = remoteRec;
                     await StorageEngine.save(table, remoteRec).catch(() => { });
@@ -338,7 +341,6 @@ const CloudSync = (() => {
                     changed = true;
                 }
             } else {
-                // سجل جديد تماماً من السحابة
                 localArr.push(remoteRec);
                 await StorageEngine.save(table, remoteRec).catch(() => { });
                 tableHashes[id] = hashOf(remoteRec);
@@ -346,21 +348,16 @@ const CloudSync = (() => {
             }
         }
 
-        // 2. معالجة السجلات المحلية التي تم حذفها من السحابة
         for (let i = localArr.length - 1; i >= 0; i--) {
             const localRec = localArr[i];
             const id = String(localRec.id);
 
             if (!remoteIds.has(id)) {
-                // إذا كان السجل قد رُفع سابقاً (موجود في الهواش)، وتم حذفه من السحابة
                 if (tableHashes[id] !== undefined) {
-                    // احذفه محلياً فقط إذا لم يكن قد عُدّل محلياً بعد آخر مزامنة
-                    if (isFreshSync || tableHashes[id] === hashOf(localRec)) {
-                        localArr.splice(i, 1);
-                        await StorageEngine.delete(table, localRec.id).catch(() => { });
-                        delete tableHashes[id];
-                        changed = true;
-                    }
+                    localArr.splice(i, 1);
+                    await StorageEngine.delete(table, localRec.id).catch(() => { });
+                    delete tableHashes[id];
+                    changed = true;
                 }
             }
         }
@@ -405,20 +402,14 @@ const CloudSync = (() => {
                 const remoteSettings = { ...settingsDoc.data() };
                 delete remoteSettings._syncedAt;
 
-                const localHash = hashOf(db._settings);
-                if (isFreshSync || hashes.__settings === localHash) {
-                    db._settings = { ...db._settings, ...remoteSettings };
-                    localStorage.setItem('edu_master_settings', JSON.stringify(db._settings));
-                    hashes.__settings = hashOf(db._settings);
-                    report['الإعدادات'] = 'تم التحديث';
-                } else {
-                    report['الإعدادات'] = 'تم الاحتفاظ بالتعديل المحلي';
-                }
+                db._settings = { ...db._settings, ...remoteSettings };
+                localStorage.setItem('edu_master_settings', JSON.stringify(db._settings));
+                hashes.__settings = hashOf(db._settings);
+                report['الإعدادات'] = 'تم التحديث';
             } else {
                 report['الإعدادات'] = 'لا يوجد إعدادات على السحابة';
             }
             saveHashes();
-            // بعد نجاح أول دمج كامل، تنتهي حالة المزامنة البكر
             isFreshSync = false;
         } catch (err) {
             console.error('[CloudSync] ❌ فشل جلب ودمج البيانات', err);
@@ -458,37 +449,24 @@ const CloudSync = (() => {
 
         const rawId = change.doc.id;
         const numericId = isNaN(Number(rawId)) ? rawId : Number(rawId);
+        const strId = String(numericId);
 
         if (change.type === 'removed') {
-            const idx = arr.findIndex(r => String(r.id) === String(numericId));
+            const idx = arr.findIndex(r => String(r.id) === strId);
             if (idx > -1) {
-                const localRec = arr[idx];
-                const localHash = hashOf(localRec);
-                const tableHashes = hashes[table] || {};
-                if (!isFreshSync && tableHashes[String(numericId)] !== localHash) {
-                    console.log(`[CloudSync] Prevented remote delete of locally modified record ${numericId} in ${table}`);
-                    return false;
-                }
                 arr.splice(idx, 1);
             }
             StorageEngine.delete(table, numericId).catch(() => { });
-            if (hashes[table]) delete hashes[table][String(numericId)];
+            if (hashes[table]) delete hashes[table][strId];
             return true;
         }
 
         const data = { ...change.doc.data(), id: numericId };
         delete data._syncedAt;
 
-        const idx = arr.findIndex(r => String(r.id) === String(numericId));
+        const idx = arr.findIndex(r => String(r.id) === strId);
         if (idx > -1) {
-            const localRec = arr[idx];
-            const localHash = hashOf(localRec);
-            const tableHashes = hashes[table] || {};
-            if (!isFreshSync && tableHashes[String(numericId)] !== localHash) {
-                console.log(`[CloudSync] Prevented overwrite of locally modified record ${numericId} in ${table}`);
-                return false;
-            }
-            if (localHash === hashOf(data)) return false;
+            if (hashOf(arr[idx]) === hashOf(data)) return false;
             arr[idx] = data;
         } else {
             arr.push(data);
@@ -496,7 +474,7 @@ const CloudSync = (() => {
         StorageEngine.save(table, [data]).catch(() => { });
 
         if (!hashes[table]) hashes[table] = {};
-        hashes[table][String(numericId)] = hashOf(data);
+        hashes[table][strId] = hashOf(data);
         return true;
     }
 

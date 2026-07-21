@@ -2237,7 +2237,7 @@ async function renderStudents() {
                     <button class="btn" title="تقرير شامل" style="padding:5px 10px; background:#3b82f6; color:white;" onclick="generateMonthlyReport(${s.id})"><i class="fas fa-file-invoice"></i></button>
                     <button class="btn" title="الملف الشخصي" style="padding:5px 10px;" onclick="viewDetailedProfile(${s.id})"><i class="fas fa-user-graduate"></i></button>
                     <button class="btn" title="تعديل" style="padding:5px 10px; background:var(--accent); color:white;" onclick="editStudent(${s.id})"><i class="fas fa-edit"></i></button>
-                    <button class="btn" title="حذف" style="padding:5px 10px; color:var(--danger);" onclick="deleteStudent(${s.id})"><i class="fas fa-trash"></i></button>
+                    <button class="btn" title="حذف" style="padding:5px 10px; color:var(--danger);" onclick="deleteStudent('${s.id}')"><i class="fas fa-trash"></i></button>
                 </div>
             </td>
         </tr>`).join('');
@@ -2346,10 +2346,10 @@ function renderGroups() {
             <td><span class="badge" style="background:var(--primary); color:white">${db.students.filter(s => s.groupId == g.id).length} طالب</span></td>
             <td>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn btn-primary" style="padding: 5px 15px; background: var(--accent);" onclick="viewGroupDetails(${g.id})">
+                    <button class="btn btn-primary" style="padding: 5px 15px; background: var(--accent);" onclick="viewGroupDetails('${g.id}')">
                         <i class="fas fa-eye"></i> عرض المجموعة
                     </button>
-                    <button class="btn" style="color:var(--danger)" onclick="deleteGroup(${g.id})">
+                    <button class="btn" style="color:var(--danger)" onclick="deleteGroup('${g.id}')">
                         <i class="fas fa-trash"></i>
                     </button>
 
@@ -2877,7 +2877,7 @@ function showAbsenceArchive() {
                     <button class="btn btn-primary" style="padding:5px 10px;" onclick="viewAbsenceSessionDetails(${s.id})">
                         <i class="fas fa-eye"></i> التفاصيل
                     </button>
-                    <button class="btn" style="color:var(--danger);" onclick="deleteAbsenceSession(${s.id})">
+                    <button class="btn" style="color:var(--danger);" onclick="deleteAbsenceSession('${s.id}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -5313,7 +5313,7 @@ function renderFastHistory() {
                 </td>
                 <td>${new Date(s.id).toLocaleTimeString('ar-EG')}</td>
                 <td>
-                    <button class="btn" style="color:var(--danger); padding:4px;" onclick="deleteScore(${s.id})">
+                    <button class="btn" style="color:var(--danger); padding:4px;" onclick="deleteScore('${s.id}')">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
