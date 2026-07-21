@@ -149,10 +149,18 @@
 <script src="firebase-app-compat.js"></script>
 <script src="firebase-firestore-compat.js"></script>
 <script>
-const FIREBASE_CONFIG={apiKey:"AIzaSyD9C1coIJp_TmyAphp_-BBWGTXA154_JF4",authDomain:"pranet-1156a.firebaseapp.com",projectId:"pranet-1156a",storageBucket:"pranet-1156a.firebasestorage.app",messagingSenderId:"330915839903",appId:"1:330915839903:web:ba51f07a9c92b825cd07aa"};
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyD9C1coIJp_TmyAphp_-BBWGTXA154_JF4",
+    authDomain: "pranet-1156a.firebaseapp.com",
+    projectId: "pranet-1156a",
+    storageBucket: "pranet-1156a.firebasestorage.app",
+    messagingSenderId: "330915839903",
+    appId: "1:330915839903:web:ba51f07a9c92b825cd07aa"
+};
 let fsDB=null,studentId=null,studentData=null;
-let allData={students:[],groups:[],attendance:[],absenceSessions:[],exams:[],scores:[],payments:[]};
+let allData={students:[],groups:[],attendance:[],absenceSessions:[],exams:[],scores:[],payments:[],cycles:[],settings:{}};
 let periods=[],periodIdx=0,unsubs=[];
+
 window.addEventListener('DOMContentLoaded',async()=>{
     const p=new URLSearchParams(window.location.search);
     studentId=p.get('student');
@@ -166,19 +174,28 @@ window.addEventListener('DOMContentLoaded',async()=>{
         attachListeners();
     }catch(err){showError('تعذّر الاتصال: '+(err.message||err));}
 });
+
 async function loadAll(){
-    const tables=['students','groups','attendance','absenceSessions','exams','scores','payments'];
+    const tables=['students','groups','attendance','absenceSessions','exams','scores','payments','cycles'];
     await Promise.all(tables.map(async t=>{
         const snap=await fsDB.collection(t).get();
         allData[t]=[];
         snap.forEach(d=>{const id=isNaN(Number(d.id))?d.id:Number(d.id);allData[t].push({...d.data(),id});});
     }));
+
+    try {
+        const sDoc = await fsDB.collection('meta').doc('settings').get();
+        if(sDoc.exists) allData.settings = sDoc.data();
+    } catch(e) {}
+
     studentData=allData.students.find(s=>String(s.id)===String(studentId));
     if(!studentData){showError('لم يتم العثور على بيانات هذا الطالب');return;}
     renderHeader();buildPeriods();renderReport();showPage();
 }
+
 function attachListeners(){
-    ['students','groups','attendance','absenceSessions','exams','scores','payments'].forEach(t=>{
+    const tables=['students','groups','attendance','absenceSessions','exams','scores','payments','cycles'];
+    tables.forEach(t=>{
         const u=fsDB.collection(t).onSnapshot(snap=>{
             allData[t]=[];
             snap.forEach(d=>{const id=isNaN(Number(d.id))?d.id:Number(d.id);allData[t].push({...d.data(),id});});
@@ -189,60 +206,118 @@ function attachListeners(){
         },e=>console.warn(t,e));
         unsubs.push(u);
     });
+
+    const su = fsDB.collection('meta').doc('settings').onSnapshot(doc=>{
+        if(doc.exists) allData.settings = doc.data();
+        if(studentData) { buildPeriods(); renderReport(); }
+    },e=>console.warn('settings listener error',e));
+    unsubs.push(su);
 }
+
 function periodKey(y,m){return y+'-'+String(m).padStart(2,'0');}
+
 function buildPeriods(){
     const s=studentData;if(!s)return;
-    const seen=new Set();
-    const mn=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const ARABIC_MONTHS=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
 
-    // ─ فقط بيانات هذا الطالب تحديداً ─
-    const myAtt  = allData.attendance.filter(a=>String(a.studentId)===String(s.id));
-    const myPays = allData.payments.filter(p=>String(p.studentId)===String(s.id));
-    const myExams= allData.exams.filter(e=>String(e.grade)===String(s.grade));
-    const myScores= allData.scores.filter(sc=>String(sc.studentId)===String(s.id));
-    const myAbsence= (allData.absenceSessions||[]).filter(ss=>{
-        if(ss.grade&&String(ss.grade)!==String(s.grade))return false;
-        if(ss.groupId&&String(ss.groupId)!==String(s.groupId))return false;
-        return (Array.isArray(ss.presentIds)&&ss.presentIds.map(String).includes(String(s.id))) ||
-               (Array.isArray(ss.absentIds)&&ss.absentIds.map(String).includes(String(s.id)));
+    // ── 1. بناء قائمة الدورات الفعلية المزامنة مع الخزنة والمالية ──
+    const cycles = [];
+    (allData.cycles || []).forEach(c => {
+        const sameGroup = !c.groupId || String(c.groupId) === String(s.groupId);
+        const sameGrade = !c.grade   || String(c.grade)   === String(s.grade);
+        if (!sameGroup || !sameGrade) return;
+        const start = c.startDate ? new Date(c.startDate) : new Date(c.date || c.id);
+        const end   = c.date ? new Date(c.date) : new Date(c.id);
+        if (isNaN(start.getTime())) return;
+        cycles.push({
+            key: `cycle-${c.id}`,
+            label: c.title || null,
+            start,
+            end: isNaN(end.getTime()) || end <= start ? new Date(start.getTime() + 24 * 60 * 60 * 1000) : end
+        });
     });
 
-    // الشهور المستخرجة من بيانات الطالب الفعلية
-    myAtt.forEach(r=>{const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));});
-    myAbsence.forEach(r=>{const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));});
-    myPays.forEach(r=>{
-        if(r.year&&r.month!=null){seen.add(periodKey(r.year,r.month-1));return;}
-        const d=new Date(r.date);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));
+    const st = allData.settings || {};
+    if (st.activeCycle && st.cycleStartDate) {
+        const activeSameGroup = !st.activeCycleGroupId || String(st.activeCycleGroupId) === String(s.groupId);
+        const activeSameGrade = !st.activeCycleGrade   || String(st.activeCycleGrade)   === String(s.grade);
+        if (activeSameGroup && activeSameGrade) {
+            cycles.push({
+                key: `cycle-${st.activeCycle}`,
+                label: st.monthlyCycleName || null,
+                start: new Date(st.cycleStartDate),
+                end: new Date(8640000000000000)
+            });
+        }
+    }
+    cycles.sort((a, b) => a.start - b.start);
+    const findCycleFor = (d) => cycles.find(c => d >= c.start && d < c.end) || null;
+
+    // ── 2. تجميع البيانات اليتيمة كـ Fallback ──
+    const monthlyFallback = new Map();
+    const addFallback = (d) => {
+        if (!d || isNaN(d.getTime())) return;
+        if (findCycleFor(d)) return;
+        const y = d.getFullYear(), m = d.getMonth();
+        const k = periodKey(y, m);
+        if (!monthlyFallback.has(k)) monthlyFallback.set(k, { year: y, month: m });
+    };
+
+    (allData.attendance || []).forEach(a => { if (String(a.studentId) === String(s.id)) addFallback(new Date(a.date)); });
+    (allData.absenceSessions || []).forEach(ss => {
+        if ((Array.isArray(ss.presentIds) && ss.presentIds.map(String).includes(String(s.id))) ||
+            (Array.isArray(ss.absentIds) && ss.absentIds.map(String).includes(String(s.id)))) {
+            addFallback(new Date(ss.date));
+        }
     });
-    myScores.forEach(sc=>{
-        const ex=myExams.find(e=>e.id===sc.examId);
-        if(ex){const d=new Date(ex.id);if(!isNaN(d))seen.add(periodKey(d.getFullYear(),d.getMonth()));}
+    (allData.payments || []).forEach(p => {
+        if (String(p.studentId) !== String(s.id)) return;
+        if (p.year && p.month) addFallback(new Date(p.year, p.month - 1, 1));
+        else addFallback(new Date(p.date));
+    });
+    (allData.exams || [])
+        .filter(e => String(e.grade) === String(s.grade) && (!e.groupId || String(e.groupId) === String(s.groupId)))
+        .forEach(e => addFallback(new Date(e.id)));
+
+    // ── 3. تجميع الفترات الفعالة والـ Fallback ──
+    const resultPeriods = cycles.map(c => ({
+        key: c.key,
+        label: c.label || `${ARABIC_MONTHS[c.start.getMonth()]} ${c.start.getFullYear()}`,
+        start: c.start,
+        end: c.end,
+        year: c.start.getFullYear(), month: c.start.getMonth()
+    }));
+
+    monthlyFallback.forEach(({ year, month }, key) => {
+        const start = new Date(year, month, 1);
+        const end   = new Date(year, month + 1, 1);
+        resultPeriods.push({ key: `month-${key}`, label: `${ARABIC_MONTHS[month]} ${year}`, start, end, year, month });
     });
 
-    // إذا لم توجد بيانات → أضف شهر التسجيل والشهر الحالي كـ fallback
-    if(seen.size===0){
-        const join=new Date(s.joinDate||s.id);
-        if(!isNaN(join))seen.add(periodKey(join.getFullYear(),join.getMonth()));
-        const now=new Date();seen.add(periodKey(now.getFullYear(),now.getMonth()));
+    const now = new Date();
+    if (!findCycleFor(now)) {
+        const y = now.getFullYear(), m = now.getMonth();
+        const k = `month-${periodKey(y, m)}`;
+        if (!resultPeriods.some(p => p.key === k)) {
+            const start = new Date(y, m, 1);
+            const end   = new Date(y, m + 1, 1);
+            resultPeriods.push({ key: k, label: `${ARABIC_MONTHS[m]} ${y}`, start, end, year: y, month: m });
+        }
     }
 
-    const prevKey = periods[periodIdx]?.key; // نحفظ الشهر المختار حالياً
-    periods=Array.from(seen).map(k=>{
-        const[y,m]=k.split('-').map(Number);
-        return{key:k,year:y,month:m,label:mn[m]+' '+y,start:new Date(y,m,1),end:new Date(y,m+1,1)};
-    }).sort((a,b)=>b.key.localeCompare(a.key)); // الأحدث أولاً
+    const prevKey = periods[periodIdx]?.key;
+    resultPeriods.sort((a, b) => b.start - a.start); // الأحدث أولاً
+    periods = resultPeriods;
 
-    // إذا كان هناك شهر مختار سابقاً → نحافظ عليه، وإلا → أول شهر (الأحدث بالبيانات)
-    if(prevKey){
-        const idx=periods.findIndex(p=>p.key===prevKey);
-        periodIdx=idx>=0?idx:0;
+    if (prevKey) {
+        const idx = periods.findIndex(p => p.key === prevKey);
+        periodIdx = idx >= 0 ? idx : 0;
     } else {
-        periodIdx=0; // الأحدث الذي فيه بيانات
+        periodIdx = 0;
     }
 
-    const sel=document.getElementById('period-select');
-    if(sel)sel.innerHTML=periods.map((p,i)=>`<option value="${i}"${i===periodIdx?' selected':''}>${p.label}</option>`).join('');
+    const sel = document.getElementById('period-select');
+    if (sel) sel.innerHTML = periods.map((p, i) => `<option value="${i}"${i === periodIdx ? ' selected' : ''}>${p.label}</option>`).join('');
 }
 
 function changePeriod(i){periodIdx=Number(i);renderReport();}
