@@ -2234,6 +2234,7 @@ async function renderStudents() {
             <td>
                 <div style="display:flex; gap:5px;">
                     <button class="btn" title="طباعة الكارت" style="padding:5px 10px; background:var(--primary); color:white;" onclick="generatePrintCard(${s.id})"><i class="fas fa-barcode"></i></button>
+                    <button class="btn" title="QR Code الطالب" style="padding:5px 10px; background:#7c3aed; color:white;" onclick="showStudentQR(${s.id})"><i class="fas fa-qrcode"></i></button>
                     <button class="btn" title="تقرير شامل" style="padding:5px 10px; background:#3b82f6; color:white;" onclick="generateMonthlyReport(${s.id})"><i class="fas fa-file-invoice"></i></button>
                     <button class="btn" title="الملف الشخصي" style="padding:5px 10px;" onclick="viewDetailedProfile(${s.id})"><i class="fas fa-user-graduate"></i></button>
                     <button class="btn" title="تعديل" style="padding:5px 10px; background:var(--accent); color:white;" onclick="editStudent(${s.id})"><i class="fas fa-edit"></i></button>
@@ -6461,7 +6462,121 @@ function viewDetailedProfile(id) {
     toggleModal('profile-modal', true);
 }
 
-// --- System Helpers ---
+// ──────────────────────────────────────────────────────────────
+//  QR Code بطاقة الطالب — يفتح ملف الطالب مباشرة عند المسح
+// ──────────────────────────────────────────────────────────────
+let _currentQRStudentId = null;
+
+function showStudentQR(id) {
+    const s = db.students.find(x => x.id === id);
+    if (!s) return;
+    _currentQRStudentId = id;
+
+    const group = db.groups.find(g => g.id == s.groupId);
+
+    // بناء الـ URL الخاص بالطالب: نفس رابط الموقع + ?student=ID
+    const baseUrl = window.location.origin + window.location.pathname;
+    const studentUrl = `${baseUrl}?student=${id}`;
+
+    // تحديث بيانات الـ Modal
+    document.getElementById('qr-modal-student-name').textContent = s.name;
+    document.getElementById('qr-modal-student-info').textContent =
+        `${group ? group.name : '---'}  •  ${s.phone || '---'}`;
+    document.getElementById('qr-modal-code-text').textContent = studentUrl.length > 60
+        ? studentUrl.slice(0, 57) + '...' : studentUrl;
+
+    // تنظيف QR container وإعادة الرسم
+    const container = document.getElementById('student-qr-container');
+    container.innerHTML = '<div style="color:var(--text-muted);"><i class="fas fa-spinner fa-spin fa-2x"></i></div>';
+
+    toggleModal('student-qr-modal', true);
+
+    // رسم الـ QR Code بعد فتح الـ Modal
+    setTimeout(() => {
+        container.innerHTML = '';
+        if (typeof QRCode !== 'undefined') {
+            new QRCode(container, {
+                text: studentUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#1e293b',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        } else {
+            // Fallback: QR عبر Google Charts API
+            const img = document.createElement('img');
+            img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(studentUrl)}&color=1e293b&bgcolor=ffffff&qzone=1`;
+            img.alt = 'QR Code';
+            img.style = 'width:200px; height:200px; border-radius:8px;';
+            container.appendChild(img);
+        }
+    }, 150);
+}
+
+function printStudentQRCard() {
+    const s = db.students.find(x => x.id === _currentQRStudentId);
+    if (!s) return;
+
+    const group = db.groups.find(g => g.id == s.groupId);
+    const baseUrl = window.location.origin + window.location.pathname;
+    const studentUrl = `${baseUrl}?student=${s.id}`;
+    const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(studentUrl)}&color=1e293b&bgcolor=ffffff&qzone=2`;
+
+    const win = window.open('', '_blank');
+    win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
+        <meta charset="UTF-8">
+        <title>بطاقة QR - ${s.name}</title>
+        <style>
+            * { margin:0; padding:0; box-sizing:border-box; }
+            body { font-family: 'Segoe UI', Tahoma, sans-serif; background:#f1f5f9; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+            .card { background:white; border-radius:20px; overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,0.12); width:320px; }
+            .card-header { background:linear-gradient(135deg,#0f4c81,#0ea5e9); color:white; padding:1.5rem; text-align:center; }
+            .card-header h2 { font-size:1.2rem; margin-bottom:0.2rem; }
+            .card-header p { opacity:.85; font-size:0.8rem; }
+            .card-body { padding:1.5rem; text-align:center; }
+            .card-body img { border-radius:12px; border:3px solid #e2e8f0; }
+            .student-url { font-size:0.65rem; color:#64748b; margin-top:0.8rem; word-break:break-all; direction:ltr; }
+            .group-badge { display:inline-block; background:#f1f5f9; border-radius:20px; padding:0.3rem 0.8rem; font-size:0.8rem; color:#0f4c81; font-weight:700; margin-top:0.6rem; }
+            @media print { body { background:white; } .card { box-shadow:none; } }
+        </style>
+    </head><body>
+        <div class="card">
+            <div class="card-header">
+                <h2>${s.name}</h2>
+                <p>بطاقة الطالب الرقمية</p>
+            </div>
+            <div class="card-body">
+                <img src="${qrImgSrc}" width="200" height="200" alt="QR Code">
+                <div class="group-badge">📚 ${group ? group.name : '---'}</div>
+                <p class="student-url">${studentUrl}</p>
+                <p style="font-size:0.75rem; color:#94a3b8; margin-top:0.5rem;">امسح الكود لفتح ملف الطالب</p>
+            </div>
+        </div>
+        <script>window.onload = () => setTimeout(() => window.print(), 500);<\/script>
+    </body></html>`);
+    win.document.close();
+}
+
+function downloadStudentQR() {
+    const s = db.students.find(x => x.id === _currentQRStudentId);
+    if (!s) return;
+
+    const baseUrl = window.location.origin + window.location.pathname;
+    const studentUrl = `${baseUrl}?student=${s.id}`;
+    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(studentUrl)}&color=1e293b&bgcolor=ffffff&qzone=2`;
+
+    const a = document.createElement('a');
+    a.href = qrApiUrl;
+    a.download = `QR_${s.name.replace(/\s+/g, '_')}.png`;
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showNotification('📥 جاري تحميل QR Code...', 'info');
+}
+
+
 function showNotification(msg, type = 'success', duration = 4000) {
     const n = document.createElement('div');
     n.className = 'fade-in';
@@ -11447,6 +11562,26 @@ function finishLoginFlow(role) {
         // الموظف يروح الحضور مباشرة، المشرف يروح الداشبورد
         if (role === 'employee') {
             setTimeout(() => showSection('attendance'), 2200);
+        }
+
+        // ── فحص الـ URL: لو فيه ?student=ID → افتح ملف الطالب مباشرة ──
+        // (يُستخدَم عند مسح QR Code الخاص بالطالب من التليفون)
+        const _qrStudentId = new URLSearchParams(window.location.search).get('student');
+        if (_qrStudentId) {
+            const _qrDelay = role === 'employee' ? 3200 : 2600;
+            setTimeout(() => {
+                const sid = isNaN(_qrStudentId) ? _qrStudentId : Number(_qrStudentId);
+                if (typeof viewDetailedProfile === 'function') {
+                    showSection('students');
+                    setTimeout(() => viewDetailedProfile(sid), 500);
+                }
+                // إزالة الـ param من الـ URL بعد الفتح بدون إعادة تحميل الصفحة
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('student');
+                    window.history.replaceState({}, '', url.toString());
+                } catch(e) {}
+            }, _qrDelay);
         }
     }, 800);
 }
